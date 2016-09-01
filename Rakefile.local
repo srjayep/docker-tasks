@@ -1,6 +1,0 @@
-ENV["FORCE_TAG"] = "0"
-ENV['DOCK_REPO'] = "docker-api-platform-snapshot/apiplatform"
-ENV['DOCKER_REGISTRY'] = "api-platform-docker-release.dr-uw2.adobeitc.com"
-#ENV['DOCKER_TAG'] = "snapshot-`date +'%Y%m%d-%H%M'`"
-ENV['GIT_REPO'] = "srjayep/apigateway"
-ENV['GIT_TYPE'] = "PUBLIC"
