@@ -12,5 +12,6 @@ task :prepare_fixtures do
     else 
       fail "ENV variable GIT_TYPE is not set, cannot proceed." 
   end
+  puts "Constucted #{git_type} git repo #{git_url}#{git_repo[0]}/#{git_repo[1]}"
   sh %(git clone #{git_url}#{git_repo[0]}/#{git_repo[1]})
 end
