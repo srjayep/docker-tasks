@@ -1,0 +1,85 @@
+load File.join(File.dirname(__FILE__), 'methods.rake')
+
+# Borrowed from https://github.com/Jimdo/puppet-beanstalkd/blob/master/Rakefile
+namespace :vagrant do
+
+  VAGRANT_MODULE_NAME    = module_name
+  VAGRANT_FIXTURES_PATH  = fixtures_path
+  VAGRANT_MODULES_PATH   = File.join(VAGRANT_FIXTURES_PATH, 'modules')
+  VAGRANT_MANIFESTS_PATH = File.join(VAGRANT_FIXTURES_PATH, 'manifests')
+  VAGRANT_MANIFEST_NAME  = 'site.pp'
+  VAGRANT_MANIFEST_FILE  = File.join('tests', VAGRANT_MANIFEST_NAME)
+
+  # Export settings to Vagrantfile.
+  task :export_vars do
+    ENV['MODULE_NAME'] = module_name
+    ENV['MODULES_PATH']   = VAGRANT_MODULES_PATH
+    ENV['MANIFESTS_PATH'] = VAGRANT_MANIFESTS_PATH
+    ENV['MANIFEST_FILE']  = VAGRANT_MANIFEST_NAME  # relative to VAGRANT_MANIFESTS_PATH
+    publish_dir = ENV['PUBLISH_DIR'] || File.join(ENV['HOME'], '.pvenv')
+    ENV['LOCAL_PACKER_VAGRANT_BOX_URL'] = File.join( publish_dir, 'vagrant' )
+    ENV['REMOTE_PACKER_VAGRANT_BOX_URL'] = 'http://scmprd1.pv.local/provisioning/vagrant'
+  end
+
+  # Install module dependencies as specified in Puppetfile.
+  task :prepare_modules do
+    command = [ 'librarian-puppet', 'install', '--no-use-v1-api' ]
+    command << '--verbose' unless ENV['LIBRARIAN_VERBOSE'].nil?
+    command.concat(['--path', VAGRANT_MODULES_PATH])
+    sh *command
+  end
+
+  # Prepare manifest as entry point for testing.
+  task :prepare_manifests do
+    # copy test manifest which includes current module
+    rm_rf VAGRANT_MANIFESTS_PATH
+    mkdir_p VAGRANT_MANIFESTS_PATH
+    cp VAGRANT_MANIFEST_FILE, VAGRANT_MANIFESTS_PATH
+
+    # stage current module with it's sibling modules
+    vagrant_module_path = File.join(VAGRANT_MODULES_PATH, VAGRANT_MODULE_NAME)
+    mkdir_p vagrant_module_path
+    copy_all_but_fixtures('.', vagrant_module_path)
+  end
+
+  task :init => [:prepare_modules, :prepare_manifests, :export_vars] do
+  end
+
+  task :spec do
+    task :spec_prep => 'vagrant:init'
+    Rake::Task[:spec].invoke
+  end
+
+  desc 'Provision the VM using Puppet'
+  task :provision => [:init] do
+    # Provision VM depending on its state.
+    case `vagrant status`
+    when /The VM is running/ then ['provision']
+    when /To resume this VM/ then ['up', 'provision']
+    else ['up']
+    end.each { |cmd| sh 'vagrant', cmd }
+  end
+
+  desc 'SSH into the VM'
+  task :ssh => :export_vars do
+    sh 'vagrant', 'ssh'
+  end
+
+  desc 'Shutdown the VM'
+  task :halt => :export_vars do
+    sh 'vagrant', 'halt', '--force'
+  end
+
+  desc 'Shutdown and Restart the VM'
+  task :reload => :export_vars do
+    sh 'vagrant', 'reload', '--provision'
+  end
+  task :restart => :reload
+
+  desc 'Destroy the VM'
+  desc 'Destroy the VM'
+  task :destroy => :export_vars do
+    sh 'vagrant', 'destroy', '--force'
+    Rake::Task[:clean].invoke
+  end
+end

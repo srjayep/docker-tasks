@@ -1,0 +1,200 @@
+load File.join(File.dirname(__FILE__), 'methods.rake')
+
+require 'json'
+
+namespace :publish do
+
+  publish_dir = ENV['PUBLISH_DIR'] || File.join(ENV['HOME'], '.pvenv')
+  build_dir = File.join( 'builds' )
+
+  def to_version
+    filename = 'metadata.json'
+    unless File.exist?(filename)
+      abort ['Error: you must be in a directory where there is a metadata.json',
+             'file so that the version can be looked up.'].join(' ')
+    end
+
+    js = JSON.parse(File.read(filename))
+    unless js.key?('version')
+      abort 'Error: metadata.json does not contain a version'
+    end
+    js['version']
+  end
+
+  def artifactory_client
+    require 'artifactory'
+
+    include Artifactory::Resource
+
+    Artifactory.configure do |config|
+      # The endpoint for the Artifactory server. If you are running the "default"
+      # Artifactory installation using tomcat, don't forget to include the
+      # +/artifactoy+ part of the URL.
+      config.endpoint = ENV['ARTIFACTORY_ENDPOINT']
+
+      # The basic authentication information. Since this uses HTTP Basic Auth, it
+      # is highly recommended that you run Artifactory over SSL.
+      config.username = ENV['ARTIFACTORY_USERNAME']
+      config.password = ENV['ARTIFACTORY_PASSWORD']
+
+      # Speaking of SSL, you can specify the path to a pem file with your custom
+      # certificates and the gem will wire it all up for you (NOTE: it must be a
+      # valid PEM file).
+      # config.ssl_pem_file = '/path/to/my.pem'
+
+      # Or if you are feelying frisky, you can always disable SSL verification
+      config.ssl_verify = false
+
+      # You can specify any proxy information, including any authentication
+      # information in the URL.
+      # config.proxy_username = 'user'
+      # config.proxy_password = 'password'
+      # config.proxy_address  = 'my.proxy.server'
+      # config.proxy_port     = '8080'
+    end
+
+    client = Artifactory.client
+
+    #puts System.info
+    #puts client.system_info
+
+    puts "Artifactory: #{client.system_version} [#{System.ping ? 'UP' : 'DOWN'}]"
+    is_pro_license = !(System.version['license'] == 'Artifactory OSS')
+
+    if is_pro_license
+      puts "Plugins: #{Plugin.all}"
+      puts "Possible repositories: #{client.repository_all}"
+    end
+
+    client 
+  end
+
+  def artifactory_upload(file, remote_path)
+    raise "File not found: #{file}" unless File.exist?(file)
+    puts "#{file} => #{remote_path}"
+    artifact = Artifact.new(local_path: file)
+    artifact.upload(ENV['ARTIFACTORY_REPOSITORY'], remote_path)
+  end
+
+  task :version do
+    puts to_version
+  end
+
+  desc "Publish VM artifacts locally"
+  task :local do
+
+    vagrant_dir = File.join( publish_dir, 'vagrant')
+
+    puts "Copying Vagrant boxes to '#{vagrant_dir}' . . ."
+    FileUtils.mkdir_p vagrant_dir
+    Dir.glob(File.join(build_dir, '*.box'))
+       .each do |file|
+      FileUtils.cp file, vagrant_dir
+    end
+
+    packer_dir = File.join( publish_dir, 'packer')
+
+    puts "Copying Packer artifacts to '#{packer_dir}' . . ."
+    FileUtils.mkdir_p packer_dir
+    Dir.glob(File.join(build_dir, '*'))
+       .select { |fn| File.directory?(fn) }.each do |dir|
+      target_path = File.join(packer_dir, File.basename(dir))
+      FileUtils.rm_rf target_path
+      FileUtils.cp_r dir, packer_dir
+    end
+  end
+
+  desc "Publish artifacts to a remote path"
+  task :remote_path do
+
+    if ENV['ARTIFACTORY_ENDPOINT'].nil?
+       abort "Error: you must specify an ARTIFACTORY_ENDPOINT env var of the form http[s]://hostname[:port]/artifactory in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_USERNAME'].nil?
+       abort "Error: you must specify an ARTIFACTORY_USERNAME env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_PASSWORD'].nil?
+       abort "Error: you must specify an ARTIFACTORY_PASSWORD env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_REPOSITORY'].nil?
+       abort "Error: you must specify an ARTIFACTORY_REPOSITORY env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_FILE'].nil?
+       abort "Error: you must specify an ARTIFACTORY_FILE env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_REMOTE_PATH'].nil?
+       abort "Error: you must specify an ARTIFACTORY_REMOTE_PATH env var in order to publish artifacts."
+    end
+
+    client = artifactory_client
+    file = ENV['ARTIFACTORY_FILE']
+    remote_path = ENV['ARTIFACTORY_REMOTE_PATH']
+
+    artifactory_upload(file, remote_path)
+  end
+
+  desc "Publish VM artifacts remotely"
+  task :remote do
+    
+    if ENV['ARTIFACTORY_ENDPOINT'].nil?
+       abort "Error: you must specify an ARTIFACTORY_ENDPOINT env var of the form http[s]://hostname[:port]/artifactory in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_USERNAME'].nil?
+       abort "Error: you must specify an ARTIFACTORY_USERNAME env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_PASSWORD'].nil?
+       abort "Error: you must specify an ARTIFACTORY_PASSWORD env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_REPOSITORY'].nil?
+       abort "Error: you must specify an ARTIFACTORY_REPOSITORY env var in order to publish artifacts."
+    end
+
+    if ENV['ARTIFACTORY_GROUPID'].nil?
+       abort "Error: you must specify an ARTIFACTORY_GROUPID env var in order to publish artifacts."
+    end
+
+    client = artifactory_client
+
+    group_id = ENV['ARTIFACTORY_GROUPID'].gsub(/[\\\.]/,'/')
+    version = to_version
+    version += '-SNAPSHOT' if ENV['ARTIFACTORY_REPOSITORY'] =~	/snapshot/i
+
+    puts "Uploading Vagrant boxes to Artifactory at the '#{ENV['ARTIFACTORY_ENDPOINT']}' endpoint and '#{ENV['ARTIFACTORY_REPOSITORY']}' repository . . ."
+    Dir.glob(File.join(build_dir, '*.box'))
+       .each do |file|
+      artifact_id = File.basename(file) 
+      artifact_id = artifact_id.chomp('.box')
+      remote_path = "/#{group_id}/#{artifact_id}/#{version}/#{artifact_id}-#{version}.box"
+      artifactory_upload(file, remote_path)
+    end
+  end
+
+  desc "Publish VM artifacts to mystack catalog"
+  task :mystack => [ 'vmware:ovfconvert' ] do
+    require 'mystack/vcloud/rake'
+
+    # Check to see if vmx file exists.
+    # If it does not exist, then exit, but don't error, it could be a virtualbox file and not a vmx file
+    tier_name = module_name.sub(/^packer_/, '')
+    ovf_file = File.join(build_dir, "ovf", "#{tier_name}.ovf")
+
+    if File.exists?(ovf_file)
+      Rake::Task['publish_vm'].invoke 
+    else
+      puts "No ovf file to publish to MyStack, exiting..."
+    end
+  end
+
+end
+
+desc "Publish VM artifacts locally (default)"
+task :publish => [ 'publish:local' ]
+

@@ -1,0 +1,437 @@
+load File.join(File.dirname(__FILE__), 'methods.rake')
+
+namespace :packer do
+
+  build_dir = File.join( 'builds' )
+
+  PACKER_MODULE_NAME    = module_name
+  PACKER_FIXTURES_PATH  = fixtures_path
+  PACKER_MODULES_PATH   = File.join(PACKER_FIXTURES_PATH, 'modules')
+  PACKER_MANIFESTS_PATH = File.join(PACKER_FIXTURES_PATH, 'manifests')
+  PACKER_MANIFEST_NAME  = 'site.pp'
+  PACKER_MANIFEST_FILE  = File.join('tests', PACKER_MANIFEST_NAME)
+
+  PACKER_BIN = ENV['PACKER_BIN'] || "packer"
+  PACKER_VERSION = '0.8.6'
+
+  # Export settings to packer.
+  task :export_vars do
+    FileUtils.mkdir_p(build_dir)
+    ENV['PACKER_LOG'] = '1'
+    ENV['PACKER_LOG_PATH'] = File.join( build_dir, 'packer.log' )
+    ENV['MODULE_NAME'] = module_name
+    ENV['MODULES_PATH']   = PACKER_MODULES_PATH
+    ENV['MANIFESTS_PATH'] = PACKER_MANIFESTS_PATH
+    ENV['MANIFEST_FILE']  = PACKER_MANIFEST_FILE  # relative to PACKER_MANIFESTS_PATH
+  end
+
+  # Create generated json from packer.js
+  task :generate_json do
+    generate_packer_template
+  end
+
+  # Install module dependencies as specified in Puppetfile.
+  task :prepare_modules do
+    command = [ 'librarian-puppet', 'install', '--no-use-v1-api' ]
+    command << '--verbose' unless ENV['LIBRARIAN_VERBOSE'].nil?
+    command.concat(['--path', PACKER_MODULES_PATH])
+    sh *command
+  end
+
+  # Prepare manifest as entry point for testing.
+  task :prepare_manifests do
+    # copy test manifest which includes current module
+    rm_rf PACKER_MANIFESTS_PATH
+    mkdir_p PACKER_MANIFESTS_PATH
+    cp PACKER_MANIFEST_FILE, PACKER_MANIFESTS_PATH
+
+    # stage current module with it's sibling modules
+    packer_module_path = File.join(PACKER_MODULES_PATH, PACKER_MODULE_NAME)
+    mkdir_p packer_module_path
+    copy_all_but_fixtures('.', packer_module_path)
+  end
+
+  # Prepare floppy files (substitute values via erb)
+  task :prepare_floppy_files do
+    render_all_erbs_to( build_dir, {
+      :remote_binary_repository => remote_binary_repository,
+      :authorized_keys => authorized_keys,
+      :skip_updates => skip_updates,
+      :windows_update_zip => windows_update_zip,
+    })
+  end
+
+  # Prepare "data" drive
+  # TODO - This should be removed once the vmware-iso builder can support
+  #        creating multiple drives
+  task :prepare_data_drive do
+
+    if has_second_drive_configuration?
+
+      output_directory = File.join(build_dir, 'external_vmdks')
+
+      vmdk_file = "#{output_directory}/disk2.vmdk"
+      size = "#{second_drive_size}M"
+      create_vmdk(vmdk_file, size)
+      create_vmdk_json(output_directory, build_dir)
+
+    end
+
+  end
+
+  task :init => [:clean, :check_versions, :generate_json, :prepare_modules, :prepare_manifests, :export_vars, :prepare_floppy_files, :prepare_data_drive] do
+  end
+
+  task :spec do
+    task :spec_prep => 'packer:init'
+    Rake::Task[:spec].invoke
+  end
+
+  desc 'Provision the VM using Puppet'
+  task :provision => [:init, :build, :post_build] do
+  end
+
+  def remote_binary_repository
+    ENV['REMOTE_REPO'] || "http://10.72.14.27:8081/artifactory"
+  end
+
+  def skip_updates
+    ENV['SKIP_UPDATES'].nil? ? false : (ENV['SKIP_UPDATES'].downcase == 'true')
+  end
+
+  def windows_update_zip
+    ENV['WIN_UPDATES_ZIP'] || ENV['WIN_UPDATE_ZIP']
+  end
+
+  def authorized_keys
+    ENV['SSH_AUTHORIZED_KEYS']
+  end
+
+  def packer_vars
+    var_files = []
+
+    if has_second_drive_configuration?
+      var_files << external_vmdks_json_path
+    end
+
+    vars = {
+      #'current_timestamp' => "#{Time.now.to_i}",
+      'remote_binary_repository' => remote_binary_repository,
+      'local_binary_repository' => local_binary_repository,
+      'headless' => ENV['PACKER_HEADLESS'] || true,
+      'compression_level' => ENV['PACKER_VAGRANT_COMPRESSION_LEVEL'] || 1,
+    }
+
+    vars = vars.collect { |k,v| ['-var', "#{k}=#{v}"] }.flatten + var_files.collect { |vf| "-var-file=#{vf}" }
+  end
+
+  def local_binary_repository
+    ENV['PUBLISH_DIR'] || File.join(ENV['HOME'], '.pvenv')
+  end
+
+  def to_version_array(string)
+    string.split(/\./).collect { |s| s.to_i }
+  end
+
+  desc 'Check that versions of tools are correct'
+  task :check_versions do
+
+    regex = /Packer v(.*)$/i
+
+    command = []
+    command << "#{PACKER_BIN}"
+    command << 'version'
+
+    output = `#{command.join(" ")}`
+    match = output.match(regex)
+    if match.nil?
+      regex = /(.*)$/i
+      match = output.match(regex)
+    end
+
+    abort "ERROR: Packer version doesn't match expected format: #{regex}" if match.nil?
+
+    version = match.captures[0]
+    actual = to_version_array(version)
+
+    # This could happen for later versions of packer
+    if actual.length <= 1
+
+      command = []
+      command << "#{PACKER_BIN}"
+      command << 'version'
+
+      output = `#{command.join(" ")}`
+      match = output.match(regex)
+      abort "ERROR: Packer version doesn't match expected format: #{regex}" if match.nil?
+
+      version = match.captures[0]
+      actual = to_version_array(version)
+    end
+
+    expected = to_version_array(PACKER_VERSION)
+
+    is_incompatible = actual[0] != expected[0] || actual[1] != expected[1] || actual[2] < expected[2]
+
+    if is_incompatible
+      msg = [
+        ' ',
+        "   ERROR : Incompatible packer version found on path",
+        "EXPECTED : #{expected.join(".")}",
+        "  ACTUAL : #{actual.join(".")}",
+        ' ',
+        "SOLUTION : Please visit https://packer.io/downloads.html to download the expected version and then install it",
+        ' ',
+      ]
+      abort msg.join("\n")
+    end
+
+  end
+
+  desc 'Validate the packer template'
+  task :validate => [:init] do
+
+    command = []
+    command << "#{PACKER_BIN}"
+    command << 'validate'
+
+    hash = packer_hash
+    builders = to_builders(hash)
+
+    command << "-only=#{builders.join(",")}"
+
+    command += packer_vars
+    command << packer_template_file
+
+    sh *command
+  end
+
+  def to_builders(hash)
+    is_incremental = !(ENV['PACKER_INCREMENTAL'] =~ /true/i).nil?
+    has_overrides = !(ENV['PACKER_BUILDERS'].nil? || ENV['PACKER_BUILDERS'].strip.empty?)
+
+    builders = hash['builders'].collect { |b| b['type'] }
+    isos = builders.find_all { |b| b.end_with?('-iso') ||  b.end_with?('-ebs') }
+    non_isos = builders.find_all { |b| !b.end_with?('-iso') || !b.end_with?('-ebs') }
+
+    if has_overrides
+      puts "Found builder override with #{ENV['PACKER_BUILDERS']} . . ."
+      override = ENV['PACKER_BUILDERS'].split(',')
+      if is_incremental
+        matches = override.find_all { |o| non_isos.include?(o) }.compact
+        abort "No incremental builder override(s) found: #{override.join(", ")}" if matches.empty?
+        puts "Running incremental builders (non-iso): #{matches.join(", ")}"
+        matches
+      else
+        return override
+      end
+    else
+      puts "Found builders #{builders.join(", ")} in packer template file"
+      if is_incremental
+        return isos if non_isos.length == 0
+        puts "Running incremental builders (non-iso): #{non_isos.join(", ")}"
+        return non_isos
+      else
+        return isos if isos.length > 0
+        return builders
+      end
+    end
+  end
+
+  def to_only(builders)
+    if ENV['PACKER_PARALLEL'].nil? || ENV['PACKER_PARALLEL'].downcase == 'true'
+      only = [ builders.join(',') ]
+    else
+      only = builders
+    end
+  end
+
+  desc 'Build the VM using Puppet'
+  task :build => ['packer:validate'] do
+
+    hash = packer_hash
+    builders = to_builders(hash)
+
+    build = Thread.new do
+      to_only(builders).each do |only|
+        command = []
+        command << "#{PACKER_BIN}"
+        command << 'build'
+  
+        unless ENV['PACKER_DEBUG'].nil?
+          command << '-debug'
+        end
+  
+        command << "-only=#{only}"
+  
+        command += packer_vars
+        command << packer_template_file
+  
+        sh *command
+      end
+    end
+
+    screenshot = nil
+    keep_snapping = true
+
+    if ENV['PACKER_SCREENSHOTS'] == "true"
+
+      sleep_seconds = 60
+
+      sleep_interrupt = Proc.new do |seconds|
+        while seconds > 0
+          sleep(1)
+          seconds -= 1
+          break unless keep_snapping
+        end
+      end
+
+      Rake::Task["screenshot:clean"].invoke
+
+      screenshot = Thread.new do
+        increment = 1
+        while keep_snapping
+          Rake::Task["screenshot:take"].invoke(increment)
+          Rake::Task["screenshot:take"].reenable
+          increment += 1
+          sleep_interrupt.call(sleep_seconds)
+        end
+      end
+
+    end
+
+    build.join
+    unless screenshot.nil?
+      keep_snapping = false
+      screenshot.join
+    end
+  end
+
+  # Post build task - working with for "data" drive
+  # TODO - This should be removed once the vmware-iso builder can support
+  #        creating multiple drives
+  task :post_build do
+
+    if has_second_drive_configuration?
+      tier_name = module_name.sub(/^packer_/, '')
+      external_vmdks_path = File.join(build_dir, 'external_vmdks')
+      output_directory = File.join(build_dir, "#{tier_name}-vmware")
+      vmx_file = File.join(output_directory, "#{tier_name}.vmx")
+      box_file = "#{tier_name}-vmware.box"
+      box_file_path = File.join(build_dir, box_file)
+      compression = ENV['PACKER_VAGRANT_COMPRESSION_LEVEL'] || 1
+      untarred_vagrant_box_directory = File.join(build_dir, 'untarred_vagrant_box')
+
+      move_data_drive_into_output_directory(external_vmdks_path, output_directory)
+      update_vmx_in_output_directory(vmx_file)
+      untar_vagrant_box_with(untarred_vagrant_box_directory, box_file_path)
+      copy_vmx_in_output_directory_to_untarred_vagrant_box_directory(vmx_file, untarred_vagrant_box_directory)
+      tar_vagrant_box_with(untarred_vagrant_box_directory, box_file_path)
+      compress_vagrant_box(box_file_path, compression)
+    end
+
+  end
+
+  def find_packer_paths
+    hash = packer_hash
+    builder = hash['builders'].find { |b| b['type'] == 'vmware-vmx' }
+    source = packer_vmware_vmx_builder['source_path']
+
+    regex_user_variable_name = /\{\{\s*user\s+`(.*?)`\s*\}\}/
+    def to_regex_user_variable(name)
+      /(\{\{\s*user\s+`#{name}`\s*\}\})/
+    end
+
+    embedded_keys = source.scan(regex_user_variable_name).flatten
+    variables = embedded_keys.inject({}) do |map, key| 
+      case key
+      when 'remote_binary_repository'
+        map[key] = remote_binary_repository
+      when 'local_binary_repository'
+        map[key] = local_binary_repository
+      else
+        map[key] = hash['variables'][key]
+      end
+      map 
+    end
+
+    packer_source = variables.inject(source) do |s, e|
+      s.gsub(to_regex_user_variable(e[0]), e[1])
+    end
+
+    vagrant_source = packer_source.sub(/(packer)/, 'vagrant').split(File::SEPARATOR)[0..-2].join(File::SEPARATOR) + '.box'
+
+    remote = remote_binary_repository
+
+    { :packer => packer_source, :vagrant => vagrant_source, :remote => remote }
+  end
+
+  def warn_about_deletion(paths)
+    exists = [paths[:packer], paths[:vagrant]].find_all { |path| File.exist?(path) }
+
+    unless exists.empty?
+      puts "The following will be deleted once the vagrant box has been downloaded:"
+      exists.each { |path| puts "    * #{path}" }
+    end
+  end
+
+  def download_vagrant_box(source, target)
+    if ENV['ARTIFACTORY_ENDPOINT'].nil?
+       abort "Error: you must specify an ARTIFACTORY_ENDPOINT env var of the form http[s]://hostname[:port]/artifactory in order to publish artifacts."
+    end
+
+    FileUtils.rm_f target if File.exist?(target)
+
+    client = artifactory_client
+
+    search_value = "#{File.basename(source, '.box')}*.box"
+    artifacts = Artifact.search(name: search_value, client: client)
+    artifact = artifacts.first
+    abort "ERROR: #{source} could not be found on Artifactory!" if artifact.nil?
+    puts "Downloading #{artifact.download_uri} => #{target} . . ."
+    
+    # NOTE: calling artifactory download doesn't seem to work. May also be writing to memory before to disk.
+    # artifact.download(File.dirname(target), filename: File.basename(target))
+
+    require 'uri'
+    require 'net/http'
+
+    uri = URI.parse(artifact.download_uri)
+
+    # Write to disk in chunks so that large files don't
+    # occupy too much memory
+    Net::HTTP.start(uri.host, uri.port) do |http|
+      f = File.open(target,'wb')
+      request = Net::HTTP::Get.new(uri.request_uri)
+      http.request(request) do |response|
+        response.read_body do |segment|
+          f.write(segment)
+        end
+      end
+    end
+
+    puts "Done."
+
+  end
+
+  desc 'Download source tier into local cache'
+  task :download_source do
+
+    paths = find_packer_paths
+    warn_about_deletion(paths)
+
+    # Download box from artifactory
+    box_name = File.basename(paths[:vagrant])
+    temp_vagrant = "#{paths[:vagrant]}.tmp"
+    download_vagrant_box(box_name, temp_vagrant)
+    FileUtils.mv(temp_vagrant, paths[:vagrant])
+    
+    # Expand box to temp packer directory
+    packer_dir = File.dirname(paths[:packer]) 
+    temp_packer = "#{packer_dir}.tmp"
+    untar_vagrant_box_with(temp_packer, paths[:vagrant])
+    FileUtils.rm_rf(packer_dir)
+    FileUtils.mv(temp_packer, packer_dir)
+  end
+
+end

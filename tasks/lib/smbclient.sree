@@ -1,0 +1,165 @@
+# smbclient.rb
+
+class Smbclient
+
+  def assert_smbclient_installed?
+    print 'smbclient: '
+    begin
+      `smbclient -V`
+    rescue Errno::ENOENT => e
+      exit_when_smbclient_is_missing
+    end
+    if $? != 0
+      exit_when_smbclient_is_missing
+    end
+  end
+
+  def exit_when_smbclient_is_missing
+    message = [
+      'You need to have samba installed in order to publish files remotely',
+      '    * OSX - brew install samba',
+      '    * Debian - apt-get install smbclient',
+      '    * RedHat - yum install samba-client',
+    ].join("\n") 
+    $stderr.puts message
+    exit -1
+  end
+
+  def smbclient
+    servicename = '//scmprd1.pv.local/provisioning' 
+    port = '445'
+    authfile = './authfile'
+
+    unless File.exists?(authfile)
+      $stderr.puts "The authentication-file could not be found: #{File.absolute_path(authfile)}"
+      exit -1
+    end
+
+    socket_options = [
+      'TCP_NODELAY',
+      'IPTOS_LOWDELAY',
+      'SO_KEEPALIVE',
+      'SO_RCVBUF=131072',
+      'SO_SNDBUF=131072',
+    ].join(' ')
+
+    smbclient = [
+      'smbclient', 
+      servicename,
+      '-p', port,
+      '-A', authfile,
+      '--socket-options', "'#{socket_options}'",
+      '-d', '1',
+    ].join(' ')
+  end
+
+  def execute(description, action, should_fail=true)
+    puts "#{description} . . ."
+    command = "#{smbclient} -c \"#{action}\""
+    output = `#{command}`
+    if $? != 0 and should_fail 
+      message = [ "Failed to '#{description}'", output ].join("\n")
+      $stderr.puts message
+      exit -1
+    end 
+    output
+  end
+
+  def mkdir_at(target)
+    execute("Making directory '#{target}' (if missing)", "mkdir #{target}")
+  end
+
+  def upload_to(source, target)
+    execute("Uploading '#{source}' => '#{target}", "put #{source} #{target}")
+  end
+
+  def upload_recursively_to(source_root, source, target_root, target)
+    execute("Uploading '#{source_root}/#{source}' (recursively) => '#{target_root}/#{target}'", 
+            "cd #{target_root}; mkdir #{target}; cd #{target}; lcd #{source_root}/#{source}; prompt; recurse; mput *; exit;")
+  end
+
+  def rename_to(source, target)
+    execute("Renaming '#{source}' => '#{target}", "rename #{source} #{target}")
+  end
+
+  def remove_file(target)
+    execute("Removing file '#{target}'", "rm #{target}")
+  end
+
+  def remove_directory(target)
+    execute("Removing directory '#{target}'", "rmdir #{target}")
+  end
+
+  def delete_directory(target)
+    return unless file_exists?(target)
+
+    output = execute("Listing directory '#{target}'", "ls #{target}\\*") 
+    lines = output.split("\n")
+    files = lines.collect { |line| 
+      columns = line.split("\s\s")
+      columns = columns.find_all { |element| not element.empty? }[0..1]
+      columns.collect { |column| column.strip }
+    }.find_all { |file| file.length == 2 && !['.', '..'].include?(file[0]) }
+
+    files.each do |file|
+      new_target = "#{target}\\#{file[0]}"
+      if (file[1] == 'D') 
+        delete_directory(new_target)
+        remove_directory(new_target)
+      else
+        remove_file(new_target)
+      end
+    end
+
+    remove_directory(target)
+  end
+
+  def file_exists?(target)
+    !(execute("Looking for '#{target}'", "ls #{target}", false) =~ /NT_STATUS_NO_SUCH_FILE/)
+  end
+
+  def publish(build_dir)
+
+    assert_smbclient_installed?
+
+    tmp_ext = "upload-#{Time.now.to_i}"
+    renames = []
+
+    vagrant_dir = 'vagrant'
+
+    puts "Uploading Vagrant boxes to '#{vagrant_dir}' . . ."
+    mkdir_at(vagrant_dir)
+    Dir.glob(File.join(build_dir, '*.box')).each do |file|
+      target = File.join(vagrant_dir, File.basename(file)).gsub('/', '\\')
+      upload_to(file, "#{target}.#{tmp_ext}")
+      renames << { :source => "#{target}.#{tmp_ext}", :target => target }
+    end
+
+    packer_dir = 'packer'
+
+    puts "Uploading Packer artifacts to '#{packer_dir}' . . ."
+    mkdir_at(packer_dir)
+    Dir.glob(File.join(build_dir, '*')).select { |fn| File.directory?(fn) }.each do |dir|
+
+      target = File.basename(dir)
+
+      upload_recursively_to(
+        build_dir, target,
+        packer_dir, "#{target}.#{tmp_ext}")
+
+      renames << { :source => "#{packer_dir}\\#{target}.#{tmp_ext}", :target => "#{packer_dir}\\#{target}" }
+    end
+
+    renames.each do |rename|
+      if rename[:source].start_with?(vagrant_dir)
+        remove_file(rename[:target]) if file_exists?(rename[:target])
+      else
+        delete_directory(rename[:target]) if file_exists?(rename[:target])
+      end
+      rename_to(rename[:source], rename[:target])
+    end 
+
+  end
+
+end
+

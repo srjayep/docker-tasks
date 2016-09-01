@@ -1,0 +1,49 @@
+require "rubygems"
+
+load File.join(File.dirname(__FILE__), 'methods.rake')
+
+namespace :package do
+
+  desc 'Create serverspec package to be uploaded to packer VM'
+  task :serverspec do
+
+    # Set pkg directory, create if it does not exist
+    pkg_dir = File.expand_path(File.join( 'pkg' ))
+    unless File.directory?(pkg_dir)
+      Dir.mkdir(pkg_dir)
+    end
+
+    # Create tar of bootstrap files and system tests
+    rake_dir = File.expand_path(File.dirname(__FILE__))
+    common_dir = File.expand_path(File.join(rake_dir, '..', '..'))
+    bootstrap_dir = File.join( common_dir, 'spec', 'serverspec', 'system' )
+
+    # Create tar of spec/system and bootstrap directories
+    serverspec_dir = Dir.pwd
+    serverspec_tar = File.join( pkg_dir, "serverspec-tests.tar.gz")
+    sh %{tar zcvf #{serverspec_tar} --exclude="*/vmware*" --exclude="*/virtualbox*" --exclude="*/amazon*" -C #{serverspec_dir} spec/system/.  -C #{bootstrap_dir} .  }
+
+    # Create tar of vmware tests
+    vmware_dir = File.join(serverspec_dir, 'spec', 'system', 'vmware')
+    if File.directory?(vmware_dir)
+      vmware_tar = File.join(pkg_dir, "vmware-tests.tar.gz")
+      sh %{tar zcvf #{vmware_tar} -C #{serverspec_dir} spec/system/vmware/. }
+    end
+
+    # Create tar of virtualbox tests
+    virtualbox_dir = File.join(serverspec_dir, 'spec', 'system', 'virtualbox')
+    if File.directory?(virtualbox_dir)
+      virtualbox_tar = File.join(pkg_dir, "virtualbox-tests.tar.gz")
+      sh %{tar zcvf #{virtualbox_tar} -C #{serverspec_dir} spec/system/virtualbox/. }
+    end
+
+    # Create tar of AWS tests
+    amazon_dir = File.join(serverspec_dir, 'spec', 'system', 'amazon')
+    if File.directory?(amazon_dir)
+      amazon_tar = File.join(pkg_dir, "amazon-tests.tar.gz")
+      sh %{tar zcvf #{amazon_tar} -C #{serverspec_dir} spec/system/amazon/. }
+    end
+
+  end
+
+end

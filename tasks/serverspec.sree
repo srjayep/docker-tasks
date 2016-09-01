@@ -1,0 +1,21 @@
+require 'rubygems'
+
+namespace :serverspec do
+  task :all => 'vagrant:export_vars' do
+    pattern = 'spec/system/**/*_spec.rb'
+    unless Dir[pattern].length == 0
+      RSpec::Core::RakeTask.new('serverspec:system') do |t|
+        t.pattern = pattern
+      end
+      Rake::Task['serverspec:system'].invoke
+    end
+  end
+  task :spec do 
+    Dir.chdir('serverspec-tests') do 
+      Rake['spec'].invoke
+    end
+  end
+end
+
+desc "Run serverspec tests"
+task :serverspec => [ 'serverspec:all' ]

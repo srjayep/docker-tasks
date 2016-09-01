@@ -1,0 +1,12 @@
+module VCloudClient
+  class Connection
+    def delete_catalog_item(catalogItemId)
+        params = {
+          'method' => :delete,
+          'command' => "/catalogItem/#{catalogItemId}"
+          }
+
+          response, headers = send_request(params)
+    end
+  end
+end
