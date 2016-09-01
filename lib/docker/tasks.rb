@@ -68,7 +68,7 @@ module Docker
     end
 
     def self.simple_version?; File.exist?("VERSION"); end
-    def self.pom_version?; Docker::Tools::Maven.in_use?; end
+    def self.pom_version?; Docker::Tasks::Maven.in_use?; end
 
     def self.simple_version_info
       return nil unless simple_version?
@@ -77,7 +77,7 @@ module Docker
 
     def self.pom_version_info
       return nil unless pom_version?
-      Docker::Tools::Maven.extract_version!
+      Docker::Tasks::Maven.extract_version!
     end
   end
 end
