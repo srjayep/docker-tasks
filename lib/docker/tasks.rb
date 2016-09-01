@@ -10,8 +10,6 @@ require "dotenv"
 require "docker/monkey_patches"
 require "docker/tasks/version"
 require "docker/tasks/rake"
-require "docker/tasks/maven"
-require "docker/tasks/elastic_beanstalk"
 
 include Docker::Tasks::Rake
 
