@@ -9,6 +9,7 @@ PATH
       inspec (~> 0.32.0)
       nokogiri (> 0)
       pry (> 0)
+      rake
       rspec (~> 3)
       rspec-its (~> 1.2)
       rubocop (> 0)
@@ -85,6 +86,7 @@ GEM
       method_source (~> 0.8.1)
       slop (~> 3.4)
     rainbow (2.1.0)
+    rake (11.2.2)
     rspec (3.5.0)
       rspec-core (~> 3.5.0)
       rspec-expectations (~> 3.5.0)
