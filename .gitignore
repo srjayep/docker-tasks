@@ -12,3 +12,4 @@
 *.a
 mkmf.log
 /.rubocop.yml
+/.Rakefile.local
