@@ -14,3 +14,4 @@ mkmf.log
 /.rubocop.yml
 /Rakefile.local
 *.local
+/context/

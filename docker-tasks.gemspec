@@ -1,4 +1,5 @@
 # coding: utf-8
+# inspired by https://github.com/renzuinc/docker-tools 
 lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "docker/tasks/version"
@@ -6,9 +7,8 @@ require "docker/tasks/version"
 Gem::Specification.new do |spec|
   spec.name          = "docker-tasks"
   spec.version       = Docker::Tasks::VERSION
-  spec.authors       = ["Jon Frisby"]
-  spec.email         = ["jfrisby@mrjoy.com"]
-  spec.summary       = "Shared tools for Rake and Docker workflows."
+  spec.authors       = ["Sree Pothula"]
+  spec.summary       = "Common docker tasks for Rake and Docker CD pipeline."
   spec.homepage      = ""
   spec.license       = "MIT"
 

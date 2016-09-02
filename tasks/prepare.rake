@@ -1,9 +1,11 @@
-load '../Rakefile.local' if File.exist?('../Rakefile.local')
+load './Rakefile.local' if File.exist?('./Rakefile.local')
 require 'fileutils'
-desc "Build a Docker container from this repo."
+
+desc "Copying the git repo into current directory" 
 task :prepare_fixtures do
   git_type = ENV['GIT_TYPE']
   git_repo = ENV['GIT_REPO'].chomp.strip.split(/\//)
+  puts "Cleaning up local git repository #{git_repo[1]}......."
   FileUtils.rm_rf(git_repo[1]) if File.exist?(git_repo[1])
   if (git_type == 'public' || git_type == 'PUBLIC' ) 
       git_url = "https://github.com/"

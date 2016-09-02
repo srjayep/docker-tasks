@@ -10,4 +10,3 @@ Dotenv.load(".common.env", ".env")
 
 #Dir.glob('../common/lib/tasks/*.rake').each { |r| load r }
 Docker::Tasks.init!("https://registry.hub.docker.com")
-#Docker::Tools.init!("registry.hub.docker.com", "https://registry.hub.docker.com/pothus0718/pothua")

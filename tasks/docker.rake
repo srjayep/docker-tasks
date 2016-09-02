@@ -7,6 +7,7 @@ load '../Rakefile.local' if File.exist?('../Rakefile.local')
     dock_tag = ENV['DOCKER_TAG'] || "#{dock_tag_2}"
     dock_repo= ENV['DOCKER_REPO'] || "#{Docker::Tasks.full_name}"
 
+
   desc "Build a Docker container from this repo.  "\
     "Use FORCE_BUILD=1 to bypass layer caching."
   task :build do
@@ -14,30 +15,26 @@ load '../Rakefile.local' if File.exist?('../Rakefile.local')
     force_rebuild = (ENV["FORCE_BUILD"].to_i != 0) ? "--no-cache=true" : ""
     if File.exist?("Dockerfile")
       dest = "."
-    elsif File.exist?("context/Dockerfile")
-      dest = "context"
     elsif 
       dest = "#{repo_part[1]}"
     else
-      fail "Didn't find a Dockerfile in project root, or context/, cannot proceed."
+      fail "No Dockerfile exists in repository's root...exiting."
     end
     sh %(docker build #{force_rebuild} -t #{dock_repo} #{dest})
   end
  
-    puts "docker tag container#{Docker::Tasks.container}"
-  desc "Tag a Docker container from this repo.  Uses VERSION or pom.xml to infer version,"\
-    " and accepts FORCE_TAG=1 to forcibly re-tag locally."
+  desc "Tag a Docker container from this repo and accepts FORCE_TAG=1 to  re-tag locally"
   task :tag do
     force_tag   = (ENV["FORCE_TAG"].to_i != 0) ? "-f " : ""
-    #sh %(docker tag #{force_tag} #{dock_repo} #{dock_reg}/#{dock_repo}:#{dock_tag})
     sh %(docker tag #{force_tag} #{dock_repo} #{dock_repo}:#{dock_tag})
-    
   end
-  desc "Push the recently tagged Docker container from this repo.  Uses VERSION or pom.xml to"\
-    " infer version, and accepts FORCE_PUSH=1 to forcibly overwrite a tag on the registry."
+
+
+  desc "Push the recently tagged Docker container from this repo FORCE_PUSH=1 to forcibly overwrite a tag on the registry"
   task :push do
     sh %(docker push #{dock_reg}/#{dock_repo}:#{dock_tag})
   end
+
 
   desc "Build Docker image for release, tag it, push it to registry.  Must be performed"\
     " immediately after a release build! OR use RELEASE_VERSION=<version>"\
