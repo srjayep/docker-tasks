@@ -32,7 +32,7 @@ load '../Rakefile.local' if File.exist?('../Rakefile.local')
 
   desc "Push the recently tagged Docker container from this repo FORCE_PUSH=1 to forcibly overwrite a tag on the registry"
   task :push do
-    sh %(docker push #{dock_reg}/#{dock_repo}:#{dock_tag})
+    sh %(docker push #{force_tag} #{dock_reg}/#{dock_repo}:#{dock_tag})
   end
 
 
