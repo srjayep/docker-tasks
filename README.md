@@ -33,13 +33,11 @@ rake prepare_fixtures             Copying the git repo into current directory
 rake release[remote]              Create tag v0.1.0 and build and push docker-tasks-0.1.0.gem to Rubygems in artifactory
 ```
 ## To build docker image locally on your workstation
-```
 * Setup your mac
 * Install Docker
 * Clone repository
 * Setup environment for docker-tasks
 * Run tasks to build docker image
-```
 
 ### 1. OSX Setup
 1. Download and install Xcode from the App Store
@@ -47,35 +45,35 @@ rake release[remote]              Create tag v0.1.0 and build and push docker-ta
 
 3. Install homebrew by typing the following in a terminal window:
      ```
-     * ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+     ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
      ```
 4. To make sure that homebrew is set up properly, type the following command and make the changes that homebrew recommends
      ```
-     * brew doctor
+     brew doctor
      ```
 5. Update tar to use gnu-tar instead of Mac OSX bsd-tar
     ```
-     * brew update;
-     * brew install gnu-tar;
-     * ln -s /usr/local/opt/gnu-tar/libexec/gnubin/tar /usr/local/bin/tar;
+     brew update;
+     brew install gnu-tar;
+     ln -s /usr/local/opt/gnu-tar/libexec/gnubin/tar /usr/local/bin/tar;
     ```
 6. Install brew cask
      ```
-     * brew install caskroom/cask/brew-cask
+     brew install caskroom/cask/brew-cask
      ```
 7. Install rvm 
      ```
-     * \curl -sSL https://get.rvm.io | bash -s stable
+     \curl -sSL https://get.rvm.io | bash -s stable
      ```
 
 9. Install ruby* 2.3.1 using rvm 
      ```
-     * rvm install 2.3.1; rvm use 2.3.1 --default
+     rvm install 2.3.1; rvm use 2.3.1 --default
      ```
 
 10. Install bundler 
      ```
-     * sudo gem install bundler
+     sudo gem install bundler
      ```
 If you encounter the 'rvm command not found' error after installing rvm, then chances are you in an older shell. Please either open a new shell or type [source ~/.rvm/scripts/rvm] in your existing shell. If you continue to see the same error after the fact then check to see if your .bash_profile has been mangled and either fix it manually or close and reopen terminal window or reinstall rvm.
  
