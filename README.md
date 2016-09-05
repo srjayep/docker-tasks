@@ -1,10 +1,10 @@
 [\[Top\]](../README.md)
 
 ## Overview
-...To build a Docker image from a given repository (ex. Open Source repo github.com/adobe-apiplatform/apigateway or an intranet git.corp repo)\
+To build a Docker image from a given repository (ex. Open Source repo github.com/adobe-apiplatform/apigateway or an intranet git.corp repo)\
  
 ## General Approach
-...In the spirit of keeping API Gateway's docker build-process interaction as simple as possible, if you are in the repository directory, the general way of building the solution is to follow:
+In the spirit of keeping API Gateway's docker build-process interaction as simple as possible, if you are in the repository directory, the general way of building the solution is to follow:
 ```
 > rake prepare_fixtures  
 > rake docker:build
@@ -34,11 +34,11 @@ rake release[remote]              Create tag v0.1.0 and build and push docker-ta
 ```
 ## To build docker image locally on your workstation
 ```
-..- Setup your mac
-..- Install Docker
-..- Clone repository
-..- Setup environment for docker-tasks
-..- Run tasks to build docker image
+ * Setup your mac
+ * Install Docker
+ * Clone repository
+ * Setup environment for docker-tasks
+ *  Run tasks to build docker image
 ```
 
 ### 1. OSX Setup
@@ -46,39 +46,40 @@ rake release[remote]              Create tag v0.1.0 and build and push docker-ta
 2. Command Line Tools for Xcode Install : xcode-select --install
 
 3. Install homebrew by typing the following in a terminal window:
-     ..*ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+     * ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 4. To make sure that homebrew is set up properly, type the following command and make the changes that homebrew recommends
-     ..*brew doctor
+     * brew doctor
 5. Update tar to use gnu-tar instead of Mac OSX bsd-tar
-     ..*brew update;
-     ..*brew install gnu-tar;
-     ..*ln -s /usr/local/opt/gnu-tar/libexec/gnubin/tar /usr/local/bin/tar;
+     * brew update;
+     * brew install gnu-tar;
+     * ln -s /usr/local/opt/gnu-tar/libexec/gnubin/tar /usr/local/bin/tar;
 6. Install brew cask
-     ..*brew install caskroom/cask/brew-cask
+     * brew install caskroom/cask/brew-cask
 7. Install rvm 
-     ..*\curl -sSL https://get.rvm.io | bash -s stable
+     * \curl -sSL https://get.rvm.io | bash -s stable
 
 9. Install ruby* 2.3.1 using rvm 
-     ..*rvm install 2.3.1; rvm use 2.3.1 --default
+     * rvm install 2.3.1; rvm use 2.3.1 --default
 
 10. Install bundler 
-     ..*sudo gem install bundler
-...If you encounter the 'rvm command not found' error after installing rvm, then chances are you in an older shell. Please either open a new shell or type [source ~/.rvm/scripts/rvm] in your existing shell. If you continue to see the same error after the fact then check to see if your .bash_profile has been mangled and either fix it manually or close and reopen terminal window or reinstall rvm.
+     * sudo gem install bundler
+If you encounter the 'rvm command not found' error after installing rvm, then chances are you in an older shell. Please either open a new shell or type [source ~/.rvm/scripts/rvm] in your existing shell. If you continue to see the same error after the fact then check to see if your .bash_profile has been mangled and either fix it manually or close and reopen terminal window or reinstall rvm.
  
 ### 2. Install Docker
 
-..*https://download.docker.com/mac/stable/Docker.dmg
-..*Double-click Docker.dmg to open the installer, then drag Moby the whale to the Applications folder.  (https://docs.docker.com/docker-for-mac/)
+https://download.docker.com/mac/stable/Docker.dmg
+Double-click Docker.dmg to open the installer, then drag Moby the whale to the Applications folder.  (https://docs.docker.com/docker-for-mac/)
 
 ####Install Docker app
-...You will be asked to authorize Docker.app with your system password during the install process. Privileged access is needed to install networking components and links to the Docker apps.
+You will be asked to authorize Docker.app with your system password during the install process. Privileged access is needed to install networking components and links to the Docker apps.
 
-..*Double-click Docker.app to start Docker in Applications.
-...The whale in the top status bar indicates that Docker is running.
+Double-click Docker.app to start Docker in Applications.
+The whale in the top status bar indicates that Docker is running.
 
 
 ### 3. Setup Rakefile.local 
-...In general, running rake <tasks> should just "work"; however, there are times that it's helpful to produce only specific artifacts or enable debugging. This can be done by maintaining a Rakefile.local in the root of your [docker-tasks] directory. Note: the Rakefile.local file should be listed in the repo's .gitignore file and should never be committed.
+
+In general, running rake <tasks> should just "work"; however, there are times that it's helpful to produce only specific artifacts or enable debugging. This can be done by maintaining a Rakefile.local in the root of your [docker-tasks] directory. Note: the Rakefile.local file should be listed in the repo's .gitignore file and should never be committed.
 ```
 ENV["FORCE_TAG"] = "0"                                                 # Will force docker tag if 1
 ENV['DOCKER_REPO'] = "docker-api-platform-snapshot/apiplatform"        # repo name 
@@ -90,18 +91,23 @@ ENV['FORCE_TAG=1] = "1"                                                # Forcibl
 ENV["RELEASE_VERSION"] = <version>                                     # Tag the release version
 ```
 ### 4. Run task to build image
-
-..*bundle install              # pull down all the dependencies
-..*rake prepare_fixtures       # pull required git repository from Rakefile.local to build docker image from
-..*rake docker:build           # builds docker image locally
- 
+```
+> bundle install              # pull down all the dependencies
+> rake prepare_fixtures       # pull required git repository from Rakefile.local to build docker image from
+> rake docker:build           # builds docker image locally
+```
 
 
 ### FAQ
-Q: When I run rake, I'm seeing gem related or missing require errors, what do I do?
+Q: When I run ```rake```, I'm seeing gem related or missing require errors, what do I do?
+```
 bundle install    # the Gemfile may have been updated - come up to date
+```
 Q: My previous build may have not finished properly and now I'm seeing weird errors when I run rake, what do I do?
+```
 rake clobber      # does a rake clean followed by deleting any downloaded dependencies 
+```
 Q: How do I get more information from rake?
+```
 rake [<task> ...] --trace
-
+```
